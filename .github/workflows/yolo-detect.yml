@@ -34,8 +34,15 @@ jobs:
         cd yolo
         mkdir -pv onnx
         cd onnx
-        wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt -O yolo.pt
-        python ../export_det_v11.pyc -w yolo.pt --sim
+        BASE_URL="https://raw.githubusercontent.com/Corenell/https---github.com-Corenell-RabbitFarmManagementSystem/main/mindyolo"
+        echo "正在下载模型..."
+        wget "${BASE_URL}/best.pt" -O best.pt
+        wget "${BASE_URL}/best0.pt" -O best0.pt
+        wget "${BASE_URL}/best1.pt" -O best1.pt
+        for model in best best0 best1; do
+            echo "正在转换 ${model}.pt 到 ONNX..."
+            python ../export_det_v11.pyc -w "${model}.pt" --sim
+        done
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -43,43 +50,43 @@ jobs:
         name: onnx_artifacts
         path: yolo/onnx/*.onnx
 
-  onnx2rknn:
-    needs: [pt2onnx]
-    strategy:
-      matrix:
-        runs-on: [ubuntu-22.04]
-    runs-on: ${{ matrix.runs-on }}
-    container:
-      image: kaylor/rk3588_onnx2rknn:2.3.2
-      options: --privileged
+  # onnx2rknn:
+  #   needs: [pt2onnx]
+  #   strategy:
+  #     matrix:
+  #       runs-on: [ubuntu-22.04]
+  #   runs-on: ${{ matrix.runs-on }}
+  #   container:
+  #     image: kaylor/rk3588_onnx2rknn:2.3.2
+  #     options: --privileged
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1000
-        fetch-tags: true
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
+  #     with:
+  #       fetch-depth: 1000
+  #       fetch-tags: true
 
-    - name: Download artifacts from pt2onnx
-      uses: actions/download-artifact@v4
-      with:
-        name: onnx_artifacts
-        path: onnx_artifacts
+  #   - name: Download artifacts from pt2onnx
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: onnx_artifacts
+  #       path: onnx_artifacts
 
-    - name: Run build script
-      run: |
-        SRC_PATH=$(pwd)
-        cd yolo
-        mkdir -pv rknn
-        cp -vr ${SRC_PATH}/onnx_artifacts/*.onnx ./rknn/
-        python convert.pyc rknn/yolo.onnx rk3588 i8 rknn/yolo.rknn
+  #   - name: Run build script
+  #     run: |
+  #       SRC_PATH=$(pwd)
+  #       cd yolo
+  #       mkdir -pv rknn
+  #       cp -vr ${SRC_PATH}/onnx_artifacts/*.onnx ./rknn/
+  #       python convert.pyc rknn/yolo.onnx rk3588 i8 rknn/yolo.rknn
 
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: rknn_artifacts
-        path: yolo/rknn/*.rknn
+  #   - name: Upload artifact
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: rknn_artifacts
+  #       path: yolo/rknn/*.rknn
 
   onnx2om:
     needs: [pt2onnx]
@@ -107,8 +114,12 @@ jobs:
         source /usr/local/Ascend/ascend-toolkit/set_env.sh
         export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/x86_64-linux/devlib/:$LD_LIBRARY_PATH
         cd om
-        atc --model=yolo.onnx --framework=5 --output=yolo --soc_version=Ascend310B4
-
+        for file in *.onnx; do
+            filename=$(basename "$file" .onnx)
+            
+            echo "正在使用 ATC 转换: $filename ..."
+            atc --model="$file" --framework=5 --output="$filename" --soc_version=Ascend310B1
+          done
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
